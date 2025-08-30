@@ -174,35 +174,30 @@ const player = {
   dir: 1, // last facing direction
 };
 
-function resetGame(){
-  state.started = true;
-  state.gameOver = false;
-  state.bgOffset = 0;
+function resetGame() {
+  state = {};
   state.distance = 0;
+  state.bgOffset = 0;
+  state.dead = false;
+
+  // Player setup
+  player = { x: canvas.width/2 - 50, y: GROUND_Y-90, w: Math.floor(70*PLAYER_VISUAL_SCALE), h: Math.floor(90*PLAYER_VISUAL_SCALE), vx:0, vy:0 };
+
+  // Predefined entities (static world)
   state.entities = [];
-  state.lastSpawnX = SAFE_START_DISTANCE;
-  state.time = 0;
-  player.x = 160;
-  player.y = GROUND_Y - 72;
-  player.vy = 0;
-  player.onGround = true;
-  document.getElementById('overlay').classList.add('hidden');
+  // place spikes/lava every ~800px
+  for (let i=1200;i<20000;i+=800) {
+    let kind = (i/800)%2===0? 'spikes':'lava';
+    state.entities.push({ kind, x:i, y:GROUND_Y-10, w:Math.floor(70*TRAP_VISUAL_SCALE), h:Math.floor(70*TRAP_VISUAL_SCALE) });
+  }
+  // place ghosts every ~1500px
+  for (let i=1800;i<20000;i+=1500) {
+    state.entities.push({ kind:'ghost', x:i, y:GROUND_Y-200, w:80, h:80, t:0 });
+  }
 }
 
 // Entities
-function spawnEntity(kind, worldX){
-  if (kind === 'spikes' || kind === 'lava'){
-    const w = Math.floor(PIT_WIDTH * TRAP_VISUAL_SCALE);
-    const h = Math.floor(70 * TRAP_VISUAL_SCALE);
-    state.entities.push({
-      kind, x: worldX, y: GROUND_Y-10, w, h
-    });
-  } else if (kind === 'ghost'){
-    const baseY = GROUND_Y - 260 - Math.random()*60;
-    state.entities.push({
-      kind, x: worldX, y: baseY, w: 120, h: 120, t0: state.time + Math.random()*10000
-    });
-  }
+// spawnEntity disabled - using static placement
 }
 
 function maybeSpawn(){
