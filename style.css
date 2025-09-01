@@ -1,8 +1,8 @@
-body {
-  margin: 0;
-  overflow: hidden;
-  background: black;
-}
-canvas {
-  display: block;
-}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:#0b1020;color:#eee;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;overflow:hidden}
+#game{display:block;width:100vw;height:100vh;background:#0b1020}
+#hud{position:fixed;inset:12px 12px auto 12px;display:flex;justify-content:space-between;gap:12px;pointer-events:none}
+#hud .left, #hud .right{background:rgba(0,0,0,.35);padding:8px 12px;border-radius:12px;backdrop-filter:blur(4px)}
+#overlay{position:fixed;inset:0;display:grid;place-items:center;text-align:center;background:rgba(0,0,0,.35);backdrop-filter:blur(2px)}
+#overlay.hidden{display:none}
+#overlay h1{margin:0 0 8px 0;font-size:48px}
+#overlay p{margin:0;font-size:18px;opacity:.9}

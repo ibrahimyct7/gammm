@@ -1,162 +1,172 @@
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-let keys = {};
-document.addEventListener('keydown', e => keys[e.code] = true);
-document.addEventListener('keyup', e => keys[e.code] = false);
+// --- Assets ---
+const playerImg = new Image();
+playerImg.src = "assets/player.png";
 
-const assets = {};
-const loadImage = src => {
-  const img = new Image();
-  img.src = src;
-  return img;
-};
+const swordImg = new Image();
+swordImg.src = "assets/swords.png";
 
-// Load images
-assets.sky = loadImage('assets/sky.png');
-assets.mountain = loadImage('assets/mountain.png');
-assets.bush = loadImage('assets/bush.png');
-assets.short_house = loadImage('assets/short_house.png');
-assets.tall_house = loadImage('assets/tall_house.png');
-assets.player = loadImage('assets/player.png');
-assets.snake = loadImage('assets/snake.png');
-assets.swords = loadImage('assets/swords.png');
+const snakeImg = new Image();
+snakeImg.src = "assets/snake.png";
 
-let player = {
-  x: 100, y: canvas.height - 300, w: 50, h: 50,
-  vx: 0, vy: 0, jumping: false, alive: true
-};
+const plantImg = new Image();
+plantImg.src = "assets/plants.png";
 
-let gravity = 0.6;
-let jumpPower = -12;
-let scrollSpeed = 3;
+const mapImg = new Image();
+mapImg.src = "assets/map.png";
 
-let platforms = [];
-let hazards = [];
-let score = 0;
+// New house assets
+const tallHouse = new Image();
+tallHouse.src = "assets/tall house.png";
 
-// Generate platforms endlessly
-function addPlatform(x) {
-  const type = Math.random() < 0.5 ? 'short_house' : 'tall_house';
-  const img = assets[type];
-  const y = canvas.height - (type === 'short_house' ? 200 : 300);
-  platforms.push({x, y, w: img.width, h: img.height, type});
-  // Random hazard
-  if (Math.random() < 0.5) {
-    hazards.push({
-      x: x + Math.random() * (img.width - 50),
-      y: y - 50,
-      type: Math.random() < 0.5 ? 'snake' : 'swords'
-    });
-  }
+const shortHouse = new Image();
+shortHouse.src = "assets/short house.png";
+
+// --- Game state ---
+let player, blocks, hazards, dist, dead;
+
+function reset() {
+  player = { x: 200, y: 300, vy: 0, w: 40, h: 40, jumping: false };
+  blocks = [makeBlock(150, 400, 200, 80)];
+  hazards = [];
+  dist = 0;
+  dead = false;
 }
 
-for (let i = 0; i < 5; i++) {
-  addPlatform(i * 300 + 200);
+function makeBlock(x, y, w, h) {
+  return {
+    x, y, w, h,
+    img: Math.random() < 0.5 ? tallHouse : shortHouse // random house
+  };
 }
 
-// Update loop
+function makeHazard(x, y, type) {
+  return { x, y, type };
+}
+
+// --- Controls ---
+const keys = {};
+onkeydown = e => (keys[e.code] = true);
+onkeyup = e => (keys[e.code] = false);
+
+// --- Update ---
 function update() {
-  if (!player.alive) return;
+  if (dead) {
+    if (keys["KeyR"]) reset();
+    return;
+  }
 
-  // Jump controls only
-  if (keys['Space'] && !player.jumping) {
-    player.vy = jumpPower;
-    if (keys['ArrowRight']) player.vx = 5;
-    else if (keys['ArrowLeft']) player.vx = -5;
-    else player.vx = 0;
+  dist += 2;
+
+  // Gravity
+  player.vy += 1;
+  player.y += player.vy;
+
+  // Jump
+  if (keys["Space"] && !player.jumping) {
+    player.vy = -15;
     player.jumping = true;
   }
 
-  player.vy += gravity;
-  player.x += player.vx;
-  player.y += player.vy;
+  // Left/right in air
+  if (keys["ArrowLeft"]) player.x -= 5;
+  if (keys["ArrowRight"]) player.x += 5;
 
-  // Collision with platforms
-  for (let plat of platforms) {
-    if (player.x < plat.x + plat.w && player.x + player.w > plat.x &&
-        player.y + player.h < plat.y + 20 && player.y + player.h > plat.y - 20) {
-      player.y = plat.y - player.h;
+  // Collisions with blocks
+  for (let b of blocks) {
+    if (
+      player.x < b.x + b.w &&
+      player.x + player.w > b.x &&
+      player.y + player.h > b.y - b.h &&
+      player.y + player.h < b.y &&
+      player.vy >= 0
+    ) {
+      player.y = b.y - b.h - player.h;
       player.vy = 0;
       player.jumping = false;
-      score += 0.1;
     }
   }
 
-  // Hazards
-  for (let hz of hazards) {
-    let img = assets[hz.type];
-    if (player.x < hz.x + img.width && player.x + player.w > hz.x &&
-        player.y < hz.y + img.height && player.y + player.h > hz.y) {
-      player.alive = false;
+  // Collisions with hazards
+  for (let h of hazards) {
+    if (
+      player.x < h.x + 40 &&
+      player.x + player.w > h.x &&
+      player.y < h.y + 40 &&
+      player.y + player.h > h.y
+    ) {
+      dead = true;
     }
   }
 
-  // Death if fall
-  if (player.y > canvas.height - 50) {
-    player.alive = false;
-  }
+  // Generate new blocks
+  const last = blocks[blocks.length - 1];
+  if (last.x + last.w < canvas.width) {
+    const newX = last.x + last.w + Math.random() * 200 + 100;
+    const newW = 200 + Math.random() * 100;
+    const newY = 400; // rooftops aligned
+    blocks.push(makeBlock(newX, newY, newW, 80));
 
-  // Scroll world
-  for (let plat of platforms) plat.x -= scrollSpeed;
-  for (let hz of hazards) hz.x -= scrollSpeed;
-
-  if (platforms[0].x + platforms[0].w < 0) {
-    platforms.shift();
-    hazards.shift();
-    addPlatform(platforms[platforms.length-1].x + 300);
+    // Random hazards
+    if (Math.random() < 0.3) {
+      hazards.push(makeHazard(newX + newW / 2, newY - 80, "sword"));
+    } else if (Math.random() < 0.3) {
+      hazards.push(makeHazard(newX + newW / 2, newY - 80, "snake"));
+    }
   }
 }
 
-// Draw parallax + world
-function draw() {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  // Parallax backgrounds
-  ctx.drawImage(assets.sky, 0, 0, canvas.width, canvas.height);
-  ctx.drawImage(assets.mountain, 0, canvas.height-400, canvas.width, 400);
-  ctx.drawImage(assets.bush, 0, canvas.height-200, canvas.width, 200);
-
-  // Platforms
-  for (let plat of platforms) {
-    ctx.drawImage(assets[plat.type], plat.x, plat.y);
+// --- Draw ---
+function drawBlock(b) {
+  if (b.img && b.img.complete) {
+    ctx.drawImage(b.img, b.x, b.y - b.h, b.w, b.h);
+  } else {
+    ctx.fillStyle = "#222";
+    ctx.fillRect(b.x, b.y - b.h, b.w, b.h);
   }
+}
+
+function drawHazard(h) {
+  let img;
+  if (h.type === "sword") img = swordImg;
+  if (h.type === "snake") img = snakeImg;
+  if (h.type === "plant") img = plantImg;
+  if (img) ctx.drawImage(img, h.x, h.y, 40, 40);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Background
+  ctx.drawImage(mapImg, 0, 0, canvas.width, canvas.height);
+
+  // Blocks (houses)
+  for (let b of blocks) drawBlock(b);
 
   // Hazards
-  for (let hz of hazards) {
-    ctx.drawImage(assets[hz.type], hz.x, hz.y, 40, 40);
-  }
+  for (let h of hazards) drawHazard(h);
 
   // Player
-  ctx.drawImage(assets.player, player.x, player.y, player.w, player.h);
+  ctx.drawImage(playerImg, player.x, player.y, player.w, player.h);
 
-  // Score
-  ctx.fillStyle = 'white';
-  ctx.font = '20px Arial';
-  ctx.fillText('Score: ' + Math.floor(score), 20, 30);
+  // HUD
+  document.getElementById("dist").textContent = Math.floor(dist / 10) + " m";
 
-  if (!player.alive) {
-    ctx.fillStyle = 'red';
-    ctx.font = '40px Arial';
-    ctx.fillText('Game Over - Press R', canvas.width/2 - 150, canvas.height/2);
+  if (dead) {
+    document.getElementById("overlay").classList.remove("hidden");
+  } else {
+    document.getElementById("overlay").classList.add("hidden");
   }
 }
 
-// Restart
-document.addEventListener('keydown', e => {
-  if (e.code === 'KeyR' && !player.alive) {
-    player = {x:100,y:canvas.height-300,w:50,h:50,vx:0,vy:0,jumping:false,alive:true};
-    platforms = [];
-    hazards = [];
-    for (let i = 0; i < 5; i++) addPlatform(i*300+200);
-    score = 0;
-  }
-});
-
+// --- Loop ---
 function loop() {
   update();
   draw();
   requestAnimationFrame(loop);
 }
+
+reset();
 loop();
