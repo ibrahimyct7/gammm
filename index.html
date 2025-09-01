@@ -1,27 +1,13 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Endless Forest Jump</title>
-  <link rel="preload" href="assets/forest.png" as="image">
-  <link rel="stylesheet" href="style.css"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Endless Rooftop Game</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="ui">
-    <h1>Endless Forest Jump</h1>
-    <p>Space = jump · Hold ← or → while pressing Space to guide the jump.</p>
-  </div>
-  <canvas id="game"></canvas></canvas>
-
-  <div id="overlay" class="hidden">
-    <div class="panel">
-      <h2 id="overlay-title">Game Over</h2>
-      <p id="score-line"></p>
-      <button id="restart">Restart</button>
-    </div>
-  </div>
-
+  <canvas id="gameCanvas"></canvas>
   <script src="game.js"></script>
 </body>
 </html>

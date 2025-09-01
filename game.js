@@ -1,388 +1,162 @@
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-// --- PATCH START ---
+let keys = {};
+document.addEventListener('keydown', e => keys[e.code] = true);
+document.addEventListener('keyup', e => keys[e.code] = false);
 
-// Scaling factors
-const PLAYER_SCALE = 1.5;
-const TRAP_SCALE = 0.67;
-
-// Trap (spikes/lava) handling
-class Trap {
-  constructor(img, x, y) {
-    this.img = img;
-    this.x = x;
-    this.y = y;
-    this.width = img.width * TRAP_SCALE;
-    this.height = img.height * TRAP_SCALE;
-  }
-  update() {
-    // Move left with background speed
-    if (movingLeft) this.x += bgSpeed;
-    if (movingRight) this.x -= bgSpeed;
-  }
-  draw() {
-    ctx.drawImage(this.img, this.x, this.y - this.height, this.width, this.height);
-  }
-}
-
-// Ghost handling
-class Ghost {
-  constructor(img, x, y) {
-    this.img = img;
-    this.baseX = x;
-    this.baseY = y;
-    this.width = img.width;
-    this.height = img.height;
-    this.time = 0;
-  }
-  update() {
-    this.time += 0.02; // slower
-  }
-  draw() {
-    let offsetY = Math.sin(this.time) * 30;
-    ctx.drawImage(this.img, this.baseX, this.baseY + offsetY, this.width, this.height);
-  }
-}
-
-// Override player drawing with scaling
-function drawPlayer(img, x, y, width, height) {
-  let w = width * PLAYER_SCALE;
-  let h = height * PLAYER_SCALE;
-  ctx.drawImage(img, x, y - h, w, h);
-}
-
-// --- PATCH END ---
-
-
-let bgX = 0;
-let bgSpeed = 4;
-let movingLeft = false;
-let movingRight = false;
-
-document.addEventListener("keydown", e => {
-  if (e.code === "ArrowLeft") movingLeft = true;
-  if (e.code === "ArrowRight") movingRight = true;
-});
-document.addEventListener("keyup", e => {
-  if (e.code === "ArrowLeft") movingLeft = false;
-  if (e.code === "ArrowRight") movingRight = false;
-});
-
-function updateBackground() {
-  if (movingLeft) bgX += bgSpeed;
-  if (movingRight) bgX -= bgSpeed;
-  if (bgX <= -canvas.width) bgX = 0;
-  if (bgX >= canvas.width) bgX = 0;
-}
-
-/* Endless Forest Jump - GitHub Pages ready
-Requirements implemented:
-- Forest background repeats horizontally (parallax) for endless feel.
-- Playable hooded character (space to jump). 
-- While jumping, horizontal displacement depends on how long ←/→ is held at the moment of jumping.
-- Obstacles: spike pits, lava pits (ground), and ghosts (vertical oscillation). Touching any = Game Over.
-- Initial safe runway before the first obstacle.
-- Obstacles are spawned randomly with spacing constraints.
-*/
-
-
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
-
-function resizeCanvas() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
-window.addEventListener("resize", resizeCanvas);
-resizeCanvas();
-
-// ------ Config ------
-const GROUND_Y = canvas.height - 90; // ground baseline for obstacles/player
-const GRAVITY = 0.8;
-const JUMP_POWER = 16; // tuned to clear a typical pit
-const BASE_SIDE_PUSH = 7;       // base side impulse for minimal arrow hold
-const MAX_SIDE_PUSH = 14;       // max side impulse when arrow held to cap
-const ARROW_HOLD_FOR_MAX = 450; // ms of hold time to reach max side push
-const SCROLL_SPEED = 4.0;       // world speed
-const SAFE_START_DISTANCE = 500; // pixels before first obstacle
-const MIN_GAP = 520;            // min distance between obstacles
-const MAX_GAP = 820;            // max distance between obstacles
-const PIT_WIDTH = 260;          // logical pit width; jump tuned to be "barely more"
-const GHOST_FREQ = 0.0018;      // vertical oscillation speed
-const PLAYER_VISUAL_SCALE = 1.5;
-const TRAP_VISUAL_SCALE = 0.67; // 1 / 1.5
-
-function deadlyCollision(player, trap) {
-  return (
-    player.x < trap.x + trap.w &&
-    player.x + player.w > trap.x &&
-    player.y < trap.y + trap.h &&
-    player.y + player.h > trap.y
-  );
-}
-
-// ------ Assets ------
-const images = {};
-const imageList = {
-  forest: 'assets/forest.png',
-  player: 'assets/player.png',
-  spikes: 'assets/spikes.png',
-  lava: 'assets/lava.png',
-  ghost: 'assets/ghost.png',
-};
-let assetsLoaded = 0, assetsTarget = Object.keys(imageList).length;
-
-for (const [key, src] of Object.entries(imageList)) {
+const assets = {};
+const loadImage = src => {
   const img = new Image();
   img.src = src;
-  img.onload = () => { assetsLoaded++; };
-  images[key] = img;
-}
-
-// ------ Input ------
-let keys = { left:false, right:false, space:false };
-let arrowDownTime = { left:0, right:0 }; // track duration
-window.addEventListener('keydown', (e)=>{
-  if (e.code === 'ArrowLeft') { if (!keys.left) arrowDownTime.left = performance.now(); keys.left = true; }
-  if (e.code === 'ArrowRight'){ if (!keys.right) arrowDownTime.right = performance.now(); keys.right = true; }
-  if (e.code === 'Space') { keys.space = true; e.preventDefault(); }
-});
-window.addEventListener('keyup', (e)=>{
-  if (e.code === 'ArrowLeft') keys.left = false;
-  if (e.code === 'ArrowRight') keys.right = false;
-  if (e.code === 'Space') keys.space = false;
-});
-
-// ------ Game State ------
-const state = {
-  started: false,
-  gameOver: false,
-  bgOffset: 0,
-  distance: 0,
-  entities: [], // obstacles + ghosts
-  lastSpawnX: SAFE_START_DISTANCE,
-  time: 0
+  return img;
 };
 
-// Player
-const player = {
-  x: 160,
-  y: GROUND_Y - 72,
-  w: Math.floor(70 * PLAYER_VISUAL_SCALE),
-  h: Math.floor(90 * PLAYER_VISUAL_SCALE),
-  vy: 0,
-  onGround: true,
-  dir: 1, // last facing direction
+// Load images
+assets.sky = loadImage('assets/sky.png');
+assets.mountain = loadImage('assets/mountain.png');
+assets.bush = loadImage('assets/bush.png');
+assets.short_house = loadImage('assets/short_house.png');
+assets.tall_house = loadImage('assets/tall_house.png');
+assets.player = loadImage('assets/player.png');
+assets.snake = loadImage('assets/snake.png');
+assets.swords = loadImage('assets/swords.png');
+
+let player = {
+  x: 100, y: canvas.height - 300, w: 50, h: 50,
+  vx: 0, vy: 0, jumping: false, alive: true
 };
 
-function resetGame() {
-  state = {};
-  state.distance = 0;
-  state.bgOffset = 0;
-  state.dead = false;
+let gravity = 0.6;
+let jumpPower = -12;
+let scrollSpeed = 3;
 
-  // Player setup
-  player = { x: canvas.width/2 - 50, y: GROUND_Y-90, w: Math.floor(70*PLAYER_VISUAL_SCALE), h: Math.floor(90*PLAYER_VISUAL_SCALE), vx:0, vy:0 };
+let platforms = [];
+let hazards = [];
+let score = 0;
 
-  // Predefined entities (static world)
-  state.entities = [];
-  // place spikes/lava every ~800px
-  for (let i=1200;i<20000;i+=800) {
-    let kind = (i/800)%2===0? 'spikes':'lava';
-    state.entities.push({ kind, x:i, y:GROUND_Y-10, w:Math.floor(70*TRAP_VISUAL_SCALE), h:Math.floor(70*TRAP_VISUAL_SCALE) });
-  }
-  // place ghosts every ~1500px
-  for (let i=1800;i<20000;i+=1500) {
-    state.entities.push({ kind:'ghost', x:i, y:GROUND_Y-200, w:80, h:80, t:0 });
-  }
-}
-
-// Entities
-// spawnEntity disabled - using static placement
-}
-
-function maybeSpawn(){
-  // ensure spacing
-  if (state.lastSpawnX - state.distance < MIN_GAP) return;
-  // pick next gap when we place something
-  const ahead = state.distance + (MIN_GAP + Math.random()*(MAX_GAP - MIN_GAP));
-  if (ahead > state.lastSpawnX) {
-    const kinds = ['spikes','lava','ghost'];
-    const kind = kinds[Math.floor(Math.random()*kinds.length)];
-    spawnEntity(kind, state.lastSpawnX);
-    state.lastSpawnX += MIN_GAP + Math.random()*(MAX_GAP - MIN_GAP);
+// Generate platforms endlessly
+function addPlatform(x) {
+  const type = Math.random() < 0.5 ? 'short_house' : 'tall_house';
+  const img = assets[type];
+  const y = canvas.height - (type === 'short_house' ? 200 : 300);
+  platforms.push({x, y, w: img.width, h: img.height, type});
+  // Random hazard
+  if (Math.random() < 0.5) {
+    hazards.push({
+      x: x + Math.random() * (img.width - 50),
+      y: y - 50,
+      type: Math.random() < 0.5 ? 'snake' : 'swords'
+    });
   }
 }
 
-// Collision helper (AABB)
-function aabb(ax,ay,aw,ah,bx,by,bw,bh){
-  return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by;
+for (let i = 0; i < 5; i++) {
+  addPlatform(i * 300 + 200);
 }
 
-// ------ Rendering ------
-function drawBackground(){
-  const img = images.forest;
-  if (!img.width) return;
-  const scale = canvas.height / img.height;
-  const drawW = img.width * scale;
-  // wrap
-  if (state.bgOffset <= -drawW) state.bgOffset += drawW;
-  // draw two tiles to cover
-  for (let i=-1;i<=1;i++){
-    ctx.drawImage(img, state.bgOffset + i*drawW, 0, drawW, canvas.height);
-  }
-  // simple ground strip
-  ctx.fillStyle = '#102815';
-  ctx.fillRect(0, GROUND_Y+40, canvas.width, canvas.height-(GROUND_Y+40));
-}
+// Update loop
+function update() {
+  if (!player.alive) return;
 
-// Draw player and entities
-function drawPlayer(){
-  const img = images.player;
-  ctx.save();
-  // mild glow
-  ctx.shadowColor = 'rgba(255,255,255,0.35)';
-  ctx.shadowBlur = 20;
-  if (player.dir < 0){
-    ctx.translate(player.x+player.w/2, player.y);
-    ctx.scale(-1,1);
-    ctx.translate(-player.x-player.w/2, -player.y);
-  }
-  ctx.drawImage(img, player.x, player.y, player.w, player.h);
-  ctx.restore();
-}
-
-function drawEntities(){
-  for (const e of state.entities){
-    const screenX = Math.floor(e.x - state.distance);
-    if (screenX < -400 || screenX > canvas.width+400) continue;
-    if (e.kind === 'spikes'){
-      ctx.drawImage(images.spikes, screenX, e.y-40, e.w, e.h+40);
-    } else if (e.kind === 'lava'){
-      ctx.drawImage(images.lava, screenX, e.y-10, e.w, e.h+10);
-    } else if (e.kind === 'ghost'){
-      // oscillate high (plenty of headroom to move before descending)
-      const amp = 220;
-      const y = e.y - Math.sin((state.time - e.t0) * GHOST_FREQ) * amp;
-      ctx.drawImage(images.ghost, screenX, y, e.w, e.h);
-      e._screenY = y; // store for collision
-    }
-  }
-}
-
-// ------ Update ------
-let canJump = true;
-function computeSideImpulse(){
-  // Determine which arrow is currently held and for how long
-  let dir = 0, holdMs = 0;
-  const now = performance.now();
-  if (keys.left && !keys.right){ dir = -1; holdMs = now - arrowDownTime.left; }
-  if (keys.right && !keys.left){ dir =  1; holdMs = now - arrowDownTime.right; }
-  // Map hold time to side push
-  const t = Math.min(1, holdMs / ARROW_HOLD_FOR_MAX);
-  const power = BASE_SIDE_PUSH + (MAX_SIDE_PUSH - BASE_SIDE_PUSH)*t;
-  return dir * power;
-}
-
-function update(dt){
-  state.time += dt;
-  if (!state.started || state.gameOver) return;
-
-  // world scrolls only when player moves left/right or has horizontal velocity from a jump
-  let moving = (keys.left ^ keys.right) || Math.abs(player.vx || 0) > 0.1;
-  if (moving) {
-    state.distance += SCROLL_SPEED;
-    state.bgOffset -= SCROLL_SPEED * 0.3;
+  // Jump controls only
+  if (keys['Space'] && !player.jumping) {
+    player.vy = jumpPower;
+    if (keys['ArrowRight']) player.vx = 5;
+    else if (keys['ArrowLeft']) player.vx = -5;
+    else player.vx = 0;
+    player.jumping = true;
   }
 
-  // spawn
-  maybeSpawn();
+  player.vy += gravity;
+  player.x += player.vx;
+  player.y += player.vy;
 
-  // jump logic: only starts from ground on Space press edge
-  if (keys.space && player.onGround && canJump){
-    const side = computeSideImpulse();
-    player.vx = side; // set horizontal impulse only once at jump
-    player.vy = -JUMP_POWER;
-    player.onGround = false;
-    canJump = false;
-    if (side !== 0) player.dir = Math.sign(side);
-  }
-  if (!keys.space) canJump = true;
-
-  // Apply physics
-  if (!player.onGround){
-    player.y += player.vy;
-    player.vy += GRAVITY;
-    // apply horizontal impulse with friction to "stop" midair
-    player.x += player.vx || 0;
-    if (player.vx){
-      player.vx *= 0.9;
-      if (Math.abs(player.vx) < 0.2) player.vx = 0;
+  // Collision with platforms
+  for (let plat of platforms) {
+    if (player.x < plat.x + plat.w && player.x + player.w > plat.x &&
+        player.y + player.h < plat.y + 20 && player.y + player.h > plat.y - 20) {
+      player.y = plat.y - player.h;
+      player.vy = 0;
+      player.jumping = false;
+      score += 0.1;
     }
   }
 
-  // Land on ground
-  const feet = player.y + player.h;
-  if (feet >= GROUND_Y){
-    player.y = GROUND_Y - player.h;
-    player.vy = 0;
-    player.onGround = true;
-  }
-
-  // Keep player on screen horizontally (visual only)
-  player.x = Math.max(40, Math.min(player.x, canvas.width-40-player.w));
-
-  // Collisions with entities
-  for (const e of state.entities){
-    const screenX = e.x - state.distance;
-    if (e.kind === 'spikes' || e.kind === 'lava'){
-      // hazard area approximated by center hole
-      const bx = screenX + 20, bw = e.w - 40;
-      const by = e.y + 10, bh = e.h - 10;
-      if (aabb(player.x, player.y, player.w, player.h, bx, by, bw, bh)){
-        return triggerGameOver();
-      }
-    } else if (e.kind === 'ghost'){
-      const gy = e._screenY ?? e.y;
-      if (aabb(player.x, player.y, player.w, player.h, screenX+10, gy+10, e.w-20, e.h-20)){
-        return triggerGameOver();
-      }
+  // Hazards
+  for (let hz of hazards) {
+    let img = assets[hz.type];
+    if (player.x < hz.x + img.width && player.x + player.w > hz.x &&
+        player.y < hz.y + img.height && player.y + player.h > hz.y) {
+      player.alive = false;
     }
   }
-}
 
-function triggerGameOver(){
-  state.gameOver = true;
-  const overlay = document.getElementById('overlay');
-  overlay.classList.remove('hidden');
-  document.getElementById('overlay-title').textContent = 'Game Over';
-  document.getElementById('score-line').textContent = `Distance: ${Math.floor(state.distance/10)} m`;
-}
-
-// ------ Loop ------
-let last = performance.now();
-function loop(now){
-  const dt = Math.min(50, now - last);
-  last = now;
-  if (assetsLoaded === assetsTarget && state.started && !state.gameOver){
-    update(dt);
+  // Death if fall
+  if (player.y > canvas.height - 50) {
+    player.alive = false;
   }
-  // Draw
+
+  // Scroll world
+  for (let plat of platforms) plat.x -= scrollSpeed;
+  for (let hz of hazards) hz.x -= scrollSpeed;
+
+  if (platforms[0].x + platforms[0].w < 0) {
+    platforms.shift();
+    hazards.shift();
+    addPlatform(platforms[platforms.length-1].x + 300);
+  }
+}
+
+// Draw parallax + world
+function draw() {
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  if (assetsLoaded === assetsTarget){
-    drawBackground();
-    drawEntities();
-    drawPlayer();
-  } else {
-    // loading
-    ctx.fillStyle = '#fff';
-    ctx.fillText('Loading...', canvas.width/2-30, canvas.height/2);
+  // Parallax backgrounds
+  ctx.drawImage(assets.sky, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(assets.mountain, 0, canvas.height-400, canvas.width, 400);
+  ctx.drawImage(assets.bush, 0, canvas.height-200, canvas.width, 200);
+
+  // Platforms
+  for (let plat of platforms) {
+    ctx.drawImage(assets[plat.type], plat.x, plat.y);
   }
+
+  // Hazards
+  for (let hz of hazards) {
+    ctx.drawImage(assets[hz.type], hz.x, hz.y, 40, 40);
+  }
+
+  // Player
+  ctx.drawImage(assets.player, player.x, player.y, player.w, player.h);
+
+  // Score
+  ctx.fillStyle = 'white';
+  ctx.font = '20px Arial';
+  ctx.fillText('Score: ' + Math.floor(score), 20, 30);
+
+  if (!player.alive) {
+    ctx.fillStyle = 'red';
+    ctx.font = '40px Arial';
+    ctx.fillText('Game Over - Press R', canvas.width/2 - 150, canvas.height/2);
+  }
+}
+
+// Restart
+document.addEventListener('keydown', e => {
+  if (e.code === 'KeyR' && !player.alive) {
+    player = {x:100,y:canvas.height-300,w:50,h:50,vx:0,vy:0,jumping:false,alive:true};
+    platforms = [];
+    hazards = [];
+    for (let i = 0; i < 5; i++) addPlatform(i*300+200);
+    score = 0;
+  }
+});
+
+function loop() {
+  update();
+  draw();
   requestAnimationFrame(loop);
 }
-requestAnimationFrame(loop);
-
-// UI
-document.getElementById('restart').addEventListener('click', resetGame);
-
-// Start automatically after a small safe delay to show instructions
-setTimeout(resetGame, 300);
+loop();
